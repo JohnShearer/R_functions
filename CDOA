@@ -1,0 +1,56 @@
+###CDOA (Cohen's D off Anova) 
+### This is a function that runs an Anova to test for differences among groups in a dataframe, where the ANOVA shows a significant difference among the groups, 
+### the function will run a TukeysHSD post-hoc test, extract the contrasts (group comparisons) that show a significant difference and  runs these through the cohens_d function
+### from the rstatix package to produce a dataframe output that shows the effect sizes for the signinifcant contrasts. 
+
+### The function has three inputs:
+##### data: a named data frame
+##### test_var: the variable you want to test
+##### group: the group you wish to compare 
+
+### For now test_var and group must be entererd as character (e.g. CDOA(df, "Salary", "Age_Group) to test the difference in salary by age_group in a dataframe called 'df.
+
+###################################################################################################################################################################
+
+CDOA <- function(data, test_var, group) {
+  
+### Run ANOVA
+res.aov <- aov(reformulate(group, test_var), data)
+sig <- summary(res.aov)[[1]][["Pr(>F)"]][1]
+### Check if ANOVA is significant
+if (sig > 0.05) {
+  return("No significant differences by group")
+  } else {
+### Run TukeyHSD test and place in a tidy tibble
+THSD_tibble <- tidy(TukeyHSD(res.aov))
+### Extract significant contrasts from TukeyHSD test
+sig_contrasts <- THSD_tibble %>%
+                  filter(adj.p.value < 0.05) %>%
+                  separate(contrast, into = c("A", "B"), 
+                                   sep = "(?<=[a-z])\\-"
+                           ) 
+### Extract the columns with the comparison groups from the significant contrasts
+comp_tibble <- sig_contrasts %>%
+                  dplyr::select(A,B)
+### Add a comma to the data frame (required in the cohen'sD test) and reorder columns
+comp_tibble$com <- ","
+comp_tibble <- comp_tibble[c(1,3,2)]
+
+####### Set up empty list for For loop output
+my_list <- list()
+
+####### For loop using Cohen'sD function from rstatix package
+
+for (i in 1:nrow(sig_contrasts)) 
+ {
+  new_element <- cohens_d(data = data,
+                          reformulate(group, test_var), 
+                          comparisons = list(c(as.character(comp_tibble[i,1]),
+                                               as.character(comp_tibble[i,2]),
+                                               as.character(comp_tibble[i,3])))
+  )
+   my_list[[length(my_list) + 1]] <- new_element 
+ }
+do.call(rbind.data.frame, my_list)
+  }
+}
